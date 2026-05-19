@@ -1,9 +1,10 @@
 /**
- * Bermuda SDK findUtxos performance patch (validated on v0.1.4).
+ * Bermuda SDK findUtxos performance patch (validated on v0.1.5).
  *
  * Default behavior on every call:
- *   - Queries chain from `snapshot.block` (overwritten by GitHub fetch),
- *     not from `utxoCache.block` — so it re-downloads events we've already seen.
+ *   - Queries chain from `snapshot.block` only (overwritten by the GitHub
+ *     fetch in cache.populate), not from `utxoCache.block` — so it can
+ *     re-download events we've already seen if the github snapshot lags.
  *   - Re-decrypts EVERY cached commitment event into `w` even though
  *     `f.utxos` already has the decrypted output. For pools with thousands
  *     of events this dominates wall time on each refresh.
@@ -16,6 +17,11 @@
  *     localStorage key so non-ours events aren't re-decrypted next time.
  *     Decrypts only events whose index > lastIndex.
  *   - Parallelizes `isSpent` checks via Promise.all.
+ *
+ * Symbols imported here (`CommitmentEventsKey`, `fileSystemStorage`, etc.)
+ * are still exported by v0.1.5's utils.js / storage.js, just under different
+ * minified aliases. v0.1.5 also threads an optional `apiKey` through
+ * `fetchComplianceBlackList`, so we pass `r.apiKey` for both compliance reads.
  */
 import fs from "fs";
 
@@ -30,15 +36,15 @@ const original = fs.readFileSync(path, "utf8");
 
 // Bump the marker whenever the patch body changes so npm-installs against an
 // already-patched node_modules upgrade in place rather than skipping.
-const PATCH_MARKER = "BERMUDA_PATCH_FINDUTXOS_V2";
+const PATCH_MARKER = "BERMUDA_PATCH_FINDUTXOS_V3";
 if (original.includes(PATCH_MARKER)) {
-  console.log("✓ Bermuda SDK find-utxos.js already patched (V2)");
+  console.log("✓ Bermuda SDK find-utxos.js already patched (V3)");
   process.exit(0);
 }
 
 // Rewrite findUtxos using the same imports as the original module.
 const replacement = `import F from"./utxo.js";import P,{fileSystemStorage as _}from"./storage.js";import{CommitmentEventsKey as E,utxoDeserializer as W,utxoSerializer as X,fetchComplianceBlackList as z,hex as C,mergeFindUtxosResults as H,queryFilterBatched as q,sortDescByAmount as K,STX_DEPOSIT_COMPONENTS as M}from"./utils.js";
-// BERMUDA_PATCH_FINDUTXOS_V2
+// BERMUDA_PATCH_FINDUTXOS_V3
 function R(r,N){
   const O="utxos";
   const j=(m,a)=>{for(const d of Object.values(m))for(const p of d)p.keypair.pubkeyHash===a.pubkeyHash&&(p.keypair=a)};
@@ -124,8 +130,8 @@ function R(r,N){
       }
       return result;
     },
-    async findFlaggedUtxos({pool:m=r.pool,keypair:a,excludeSpent:d=!0,excludeOthers:p=!0,from:D=r.startBlock,token:l,excludeUtxos:g}){l=l.toLowerCase();const b=await this.findUtxos({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,tokens:[l]}).then(x=>x[l]),I=new Set(g??[]),f=b.filter(x=>!I.has(x));if(f.length===0)throw new Error("No utxos found.");const v=await z(r.complianceManager),y=new Set;for(const x of v.blacklist)y.add(BigInt(x));const U=new Set;for(const x of f)for(let S=0;S<M;S++){if(x.subDepositAmounts[S]===0n)continue;const c=x.subDepositIds[S];y.has(c)&&U.add(x)}return{utxos:Array.from(U)}},
-    async findUtxosUpTo({pool:m=r.pool,keypair:a,excludeSpent:d=!0,excludeOthers:p=!0,from:D=r.startBlock,token:l,amount:g,results:b=16,excludeUtxos:I,targetCompliant:f=!0}){l=l.toLowerCase();const v=await this.findUtxos({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,tokens:[l]}).then(t=>K(t[l]).slice(0,16)),y=new Set(I??[]),U=v.filter(t=>!y.has(t));if(U.length===0)throw new Error("cannot cover amount with candidate utxos.");const S=U.slice(0,b).reduce((t,u)=>t+u.amount,0n)<g?U:U.slice(0,b);let w=0n,c=null;for(let t=0;t<S.length;t++)if(w+=S[t].amount,w>=g){c=S.slice(0,t+1);break}if(c===null)throw new Error("insufficient UTXOs");let B=new Set;const h=new Map;for(const t of c)for(let u=0;u<M;u++){if(t.subDepositAmounts[u]===0n)continue;const s=t.subDepositIds[u];B.add(s);const k=h.get(s);k===void 0?h.set(s,t.subDepositAmounts[u]):h.set(s,k+t.subDepositAmounts[u])}const A=[...B].map(t=>t.toString()).sort(),i=await z(r.complianceManager),e=A.filter(t=>!i.blacklist.includes(t)),o=A.filter(t=>i.blacklist.includes(t));if(f){if(o.length===0)return{utxos:c};const t=[...B].reduce((s,k)=>s+(h.get(k)??0n),0n),u=o.reduce((s,k)=>s+(h.get(BigInt(k))??0n),0n);if(t-u>=g)return{utxos:c,uncompliantDepositIds:o.map(s=>BigInt(s)),uncompliantAmounts:o.map(s=>h.get(BigInt(s))??0n)};const n=c.filter(s=>s.subDepositIds.some(k=>o.includes(k.toString())));return this.findUtxosUpTo({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,token:l,amount:g,results:b,targetCompliant:f,excludeUtxos:[...I??[],...n]})}else{if(e.length===0)return{utxos:c};if(o.reduce((n,s)=>n+(h.get(BigInt(s))??0n),0n)>=g)return{utxos:c,uncompliantDepositIds:o.map(n=>BigInt(n)),uncompliantAmounts:o.map(n=>h.get(BigInt(n))??0n),compliantDepositIds:e.map(n=>BigInt(n)),compliantAmounts:e.map(n=>h.get(BigInt(n))??0n)};const u=c.filter(n=>n.subDepositIds.some(s=>e.includes(s.toString())));return this.findUtxosUpTo({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,token:l,amount:g,results:b,targetCompliant:f,excludeUtxos:[...I??[],...u]})}}
+    async findFlaggedUtxos({pool:m=r.pool,keypair:a,excludeSpent:d=!0,excludeOthers:p=!0,from:D=r.startBlock,token:l,excludeUtxos:g}){l=l.toLowerCase();const b=await this.findUtxos({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,tokens:[l]}).then(x=>x[l]),I=new Set(g??[]),f=b.filter(x=>!I.has(x));if(f.length===0)throw new Error("No utxos found.");const v=await z(r.complianceManager,r.apiKey),y=new Set;for(const x of v.blacklist)y.add(BigInt(x));const U=new Set;for(const x of f)for(let S=0;S<M;S++){if(x.subDepositAmounts[S]===0n)continue;const c=x.subDepositIds[S];y.has(c)&&U.add(x)}return{utxos:Array.from(U)}},
+    async findUtxosUpTo({pool:m=r.pool,keypair:a,excludeSpent:d=!0,excludeOthers:p=!0,from:D=r.startBlock,token:l,amount:g,results:b=16,excludeUtxos:I,targetCompliant:f=!0}){l=l.toLowerCase();const v=await this.findUtxos({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,tokens:[l]}).then(t=>K(t[l]).slice(0,16)),y=new Set(I??[]),U=v.filter(t=>!y.has(t));if(U.length===0)throw new Error("cannot cover amount with candidate utxos.");const S=U.slice(0,b).reduce((t,u)=>t+u.amount,0n)<g?U:U.slice(0,b);let w=0n,c=null;for(let t=0;t<S.length;t++)if(w+=S[t].amount,w>=g){c=S.slice(0,t+1);break}if(c===null)throw new Error("insufficient UTXOs");let B=new Set;const h=new Map;for(const t of c)for(let u=0;u<M;u++){if(t.subDepositAmounts[u]===0n)continue;const s=t.subDepositIds[u];B.add(s);const k=h.get(s);k===void 0?h.set(s,t.subDepositAmounts[u]):h.set(s,k+t.subDepositAmounts[u])}const A=[...B].map(t=>t.toString()).sort(),i=await z(r.complianceManager,r.apiKey),e=A.filter(t=>!i.blacklist.includes(t)),o=A.filter(t=>i.blacklist.includes(t));if(f){if(o.length===0)return{utxos:c};const t=[...B].reduce((s,k)=>s+(h.get(k)??0n),0n),u=o.reduce((s,k)=>s+(h.get(BigInt(k))??0n),0n);if(t-u>=g)return{utxos:c,uncompliantDepositIds:o.map(s=>BigInt(s)),uncompliantAmounts:o.map(s=>h.get(BigInt(s))??0n)};const n=c.filter(s=>s.subDepositIds.some(k=>o.includes(k.toString())));return this.findUtxosUpTo({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,token:l,amount:g,results:b,targetCompliant:f,excludeUtxos:[...I??[],...n]})}else{if(e.length===0)return{utxos:c};if(o.reduce((n,s)=>n+(h.get(BigInt(s))??0n),0n)>=g)return{utxos:c,uncompliantDepositIds:o.map(n=>BigInt(n)),uncompliantAmounts:o.map(n=>h.get(BigInt(n))??0n),compliantDepositIds:e.map(n=>BigInt(n)),compliantAmounts:e.map(n=>h.get(BigInt(n))??0n)};const u=c.filter(n=>n.subDepositIds.some(s=>e.includes(s.toString())));return this.findUtxosUpTo({pool:m,keypair:a,excludeSpent:d,excludeOthers:p,from:D,token:l,amount:g,results:b,targetCompliant:f,excludeUtxos:[...I??[],...u]})}}
   };
 }
 export{R as default};

@@ -2,7 +2,9 @@
  * Bermuda SDK: attach recipient `note` (memo) to transfer output UTXOs.
  * Upstream buildTransferInputsOutputs drops note when constructing outputs.
  *
- * v0.1.4 ships minified strategy.js — patches use exact substring replacements.
+ * v0.1.5 still ships minified strategy.js with the same three patterns —
+ * we use exact substring replacements. If any pattern stops matching upstream,
+ * the script no-ops with a warning rather than corrupting the file.
  */
 import fs from "fs";
 

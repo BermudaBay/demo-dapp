@@ -112,8 +112,8 @@ scripts/
 ## SDK patches
 
 The `postinstall` script applies a few patches to `node_modules/@bermuda/sdk`
-that are still required at v0.1.4. All patches are idempotent and live next
-to the script that invokes them — see [`sdk-v0.1.4-patches.md`](sdk-v0.1.4-patches.md)
+that are still required at v0.1.5. All patches are idempotent and live next
+to the script that invokes them — see [`sdk-v0.1.5-patches.md`](sdk-v0.1.5-patches.md)
 for the per-patch rationale and the patches that have been retired since v0.1.3.
 
 Summary:
@@ -129,8 +129,10 @@ Summary:
   in localStorage) and `isSpent` checks parallelized via `Promise.all`. Big
   speed win for accounts with thousands of cached events.
 
-The same script also downloads the v0.1.4 circuit JSONs into `public/circuits/84532/`
-since the SDK no longer ships Base Sepolia circuits in its bundle.
+The same script also downloads the v0.1.5 circuit JSONs into `public/circuits/84532/`
+since the SDK no longer ships Base Sepolia circuits in its bundle. A
+`.version` sentinel in that directory triggers a re-download when switching
+SDK versions, so stale proving keys never linger.
 
 ## Scripts
 
@@ -145,7 +147,7 @@ npm run lint         # eslint
 ## Tech stack
 
 - **Next.js 16** (webpack) + **React 19** + **TypeScript**
-- **[@bermuda/sdk](https://docs.bermudabay.xyz)** v0.1.4 — privacy pool + ZK proofs in the browser
+- **[@bermuda/sdk](https://docs.bermudabay.xyz)** v0.1.5 — privacy pool + ZK proofs in the browser
 - **viem 2.47** + **wagmi 3** for wallet handling
 - **@privy-io/react-auth 3** for passkey authentication
 - **Zustand 5** for state, **TanStack Query 5** for async data
@@ -160,6 +162,6 @@ npm run lint         # eslint
   configured ERC-4626 vault is the testnet MetaMorpho USDC vault.
 - **Node.js ≥ 20.9** required for Next.js 16. `.nvmrc` pins 22.
 - The `@bermuda/sdk` package is fetched directly from
-  `https://api.tilapialabs.xyz/bermuda/v0/sdk/v0.1.4` rather than from npm.
+  `https://api.tilapialabs.xyz/bermuda/v0/sdk/v0.1.5` rather than from npm.
   `legacy-peer-deps=true` is set in `.npmrc` to keep peer-dep checks loose
   during install.

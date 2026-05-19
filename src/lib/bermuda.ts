@@ -28,8 +28,8 @@ export async function getBermuda(): Promise<ISdk> {
  * never goes through viem's `signMessage` action.
  *
  * Why we need this:
- *   v0.1.4 of `@bermuda/sdk` calls `signer.signMessage(<Uint8Array>)` (via
- *   `toAnySigner`), which under viem 2.47.10 ends up on
+ *   v0.1.5 of `@bermuda/sdk` (same as v0.1.4) calls
+ *   `signer.signMessage(<Uint8Array>)` (via `toAnySigner`), which under viem 2.47.10 ends up on
  *   `walletClient.request({ method: "personal_sign", params: [hex, address] })`.
  *   With certain providers (Privy embedded wallets, in particular) the
  *   message ends up serialized as `[object Object]` somewhere on the wire and
@@ -82,7 +82,7 @@ export function makeBermudaSigner(walletClient: any): AnySignerLike {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async signMessage(args: any): Promise<`0x${string}`> {
       // anysigner branch 2 always invokes us as `signMessage({message:{raw:t}})`
-      // where `t` is whatever the SDK passed (a Uint8Array in v0.1.4).
+      // where `t` is whatever the SDK passed (a Uint8Array in v0.1.4/v0.1.5).
       const message = args?.message ?? args;
       const raw = message?.raw ?? message;
       const hex = toHexString(raw);
@@ -120,7 +120,7 @@ export function makeBermudaSigner(walletClient: any): AnySignerLike {
     // The shape above isn't structurally identical to any single AnySignerLike
     // member, but it's duck-typed correctly: at runtime the SDK's toAnySigner
     // dispatches on `"address" in signer` and treats us as a viem-Account-like
-    // signer. The cast here is the cost of v0.1.4's stricter union type.
+    // signer. The cast here is the cost of v0.1.4+'s stricter union type.
   } as unknown as AnySignerLike;
 }
 
@@ -558,13 +558,13 @@ export async function loadShieldedHistory(
 /**
  * Check the compliance status of the user's shielded balance.
  *
- * v0.1.4 changed `findUtxosUpTo({targetCompliant: false})` semantics: it now
- * throws "insufficient UTXOs" / "cannot cover amount" when the target can't
- * be covered from uncompliant funds — which is the common case (no flagged
- * funds at all). The SDK's `findFlaggedUtxos` does the right thing but isn't
- * exposed on the root ISdk, so we replicate its logic: list unspent UTXOs,
- * fetch the compliance blacklist, and sum amounts of UTXOs that contain any
- * blacklisted sub-deposit ID.
+ * v0.1.4 changed `findUtxosUpTo({targetCompliant: false})` semantics — and
+ * v0.1.5 keeps that change: it throws "insufficient UTXOs" / "cannot cover
+ * amount" when the target can't be covered from uncompliant funds, which is
+ * the common case (no flagged funds at all). The SDK's `findFlaggedUtxos`
+ * does the right thing but isn't exposed on the root ISdk, so we replicate
+ * its logic: list unspent UTXOs, fetch the compliance blacklist, and sum
+ * amounts of UTXOs that contain any blacklisted sub-deposit ID.
  */
 export type CheckComplianceOptions = {
   bermuda?: ISdk;
